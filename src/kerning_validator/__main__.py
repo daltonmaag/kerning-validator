@@ -11,13 +11,19 @@ from typing import Mapping, Sequence
 
 import ufo2ft
 import uharfbuzz as hb
+from fontTools import unicodedata
+from fontTools.ttLib import TTFont
 from fontTools.ufoLib.kerning import lookupKerningValue
+from ufo2ft.featureWriters.kernFeatureWriter import unicodeBidiType
+from ufo2ft.util import DFLT_SCRIPTS, classifyGlyphs
 from ufoLib2 import Font
-
 
 # GID_PREFIX is an arbitrary value > U+10FFF to shift codepoints by, to avoid
 # HarfBuzz doing any processing on them.
 GID_PREFIX = 0x80000000
+
+# Shapers hate this one mixing of bidi types in a kerning pair.
+BAD_BIDIS = {"L", "R"}
 
 
 def main(args: list[str] | None = None):
@@ -39,6 +45,8 @@ def validate_kerning(ufo: Font) -> None:
         v: GID_PREFIX + k for k, v in enumerate(tt_font.glyphOrder)
     }
 
+    glyph_scripts, script_bidis = classify_glyphs(tt_font)
+
     hb_blob = hb.Blob(tt_font_blob.getvalue())
     hb_face = hb.Face(hb_blob)
     hb_font = hb.Font(hb_face)
@@ -54,6 +62,25 @@ def validate_kerning(ufo: Font) -> None:
     second_glyphs.intersection_update(glyph_id)
 
     for first, second in itertools.product(sorted(first_glyphs), sorted(second_glyphs)):
+        # Skip pairs that mix explicit scripts (implicit scripts like Zyyy are
+        # fine), because in real-world applications, text is segmented into text
+        # runs for each script. Cross-script kerning is therefore never applied.
+        pair_scripts: set[str] = {
+            *glyph_scripts.get(first, []),
+            *glyph_scripts.get(second, []),
+        } - DFLT_SCRIPTS
+        if len(pair_scripts) > 1:
+            continue
+
+        # Directionality runs also ensure that bidi mixing won't typically occur
+        # in real applications.
+        pair_bidis: set[str] = {
+            *script_bidis.get(first, []),
+            *script_bidis.get(second, []),
+        }
+        if pair_bidis.issuperset(BAD_BIDIS):
+            continue
+
         reference_value = lookupKerningValue((first, second), ufo.kerning, ufo.groups)
 
         first_gid = glyph_id[first]
@@ -91,6 +118,29 @@ def get_glyph_id(font: hb.Font, codepoint: int, user_data: None) -> int:
     """
     assert codepoint >= GID_PREFIX, codepoint
     return codepoint - GID_PREFIX
+
+
+def classify_glyphs(font: TTFont) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+    cmap = font.getBestCmap()
+    gsub = font["GSUB"]
+
+    scripts = classifyGlyphs(script_extensions_for_codepoint, cmap, gsub)
+    glyph_scripts: dict[str, set[str]] = {}
+    for script, glyphs in scripts.items():
+        for name in glyphs:
+            glyph_scripts.setdefault(name, set()).add(script)
+
+    bidis = classifyGlyphs(unicodeBidiType, cmap, gsub)
+    glyph_bidis: dict[str, set[str]] = {}
+    for bidi, glyphs in bidis.items():
+        for name in glyphs:
+            glyph_bidis.setdefault(name, set()).add(bidi)
+
+    return glyph_scripts, glyph_bidis
+
+
+def script_extensions_for_codepoint(uv: int) -> set[str]:
+    return unicodedata.script_extension(chr(uv))
 
 
 def bucket_kerned_glyphs(

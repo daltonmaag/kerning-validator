@@ -24,6 +24,7 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
+  "fontTools",
   "ufo2ft",
   "ufoLib2",
   "uharfbuzz",
@@ -46,6 +47,8 @@ version-file = "src/kerning_validator/__about__.py"
 
 [tool.hatch.envs.default]
 dependencies = [
+  "black",
+  "isort",
   "pytest",
   "pytest-cov",
 ]
@@ -69,6 +72,9 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "if TYPE_CHECKING:",
 ]
+
+[tool.isort]
+profile = "black"
 
 [tool.pyright]
 include = ["src", "tests"]
