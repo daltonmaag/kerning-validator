@@ -93,7 +93,8 @@ def validate_kerning(ufo: Font) -> None:
         hb_buf = hb.Buffer()
         # Insert a ZWNJ inbetween to stop (most?) features from applying.
         hb_buf.add_codepoints((first_gid, ZWNJ_CODEPOINT, second_gid))
-        hb_buf.guess_segment_properties()
+        hb_buf.script = next(iter(pair_scripts), "Zyyy")
+        hb_buf.direction = unicodedata.script_horizontal_direction(hb_buf.script)
         hb.shape(hb_font, hb_buf, None)
         assert len(hb_buf.glyph_infos) == 2
 
