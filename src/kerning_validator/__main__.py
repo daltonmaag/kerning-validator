@@ -86,19 +86,35 @@ def validate_kerning(ufo: Font) -> None:
         if pair_bidis.issuperset(BAD_BIDIS):
             continue
 
-        reference_value = lookupKerningValue((first, second), ufo.kerning, ufo.groups)
+        script = next(iter(pair_scripts), "Zyyy")
+        direction = unicodedata.script_horizontal_direction(script)
+
+        if direction == "RTL":
+            reference_value = lookupKerningValue(
+                (second, first), ufo.kerning, ufo.groups
+            )
+        else:
+            reference_value = lookupKerningValue(
+                (first, second), ufo.kerning, ufo.groups
+            )
 
         first_gid = glyph_id[first]
         second_gid = glyph_id[second]
         hb_buf = hb.Buffer()
+        hb_buf.script = script
+        hb_buf.direction = direction
         # Insert a ZWNJ inbetween to stop (most?) features from applying.
-        hb_buf.add_codepoints((first_gid, ZWNJ_CODEPOINT, second_gid))
-        hb_buf.script = next(iter(pair_scripts), "Zyyy")
-        hb_buf.direction = unicodedata.script_horizontal_direction(hb_buf.script)
+        if direction == "RTL":
+            hb_buf.add_codepoints((second_gid, ZWNJ_CODEPOINT, first_gid))
+        else:
+            hb_buf.add_codepoints((first_gid, ZWNJ_CODEPOINT, second_gid))
         hb.shape(hb_font, hb_buf, None)
         assert len(hb_buf.glyph_infos) == 2
 
-        first_glyph_advance = hb_buf.glyph_positions[0].x_advance
+        if direction == "RTL":
+            first_glyph_advance = hb_buf.glyph_positions[1].x_advance
+        else:
+            first_glyph_advance = hb_buf.glyph_positions[0].x_advance
         first_glyph_kerning = first_glyph_advance - hb_advance_width
         if first_glyph_kerning != reference_value:
             print(
