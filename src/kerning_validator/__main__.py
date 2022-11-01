@@ -22,6 +22,11 @@ from ufoLib2 import Font
 # HarfBuzz doing any processing on them.
 GID_PREFIX = 0x80000000
 
+# Inserted between two pairs to stop features from applying, but keep the
+# kerning.
+ZWNJ_CODEPOINT = 0x200C
+SPACE_CODEPOINT = 0x0020
+
 # Shapers hate this one mixing of bidi types in a kerning pair.
 BAD_BIDIS = {"L", "R"}
 
@@ -86,9 +91,11 @@ def validate_kerning(ufo: Font) -> None:
         first_gid = glyph_id[first]
         second_gid = glyph_id[second]
         hb_buf = hb.Buffer()
-        hb_buf.add_codepoints((first_gid, second_gid))
+        # Insert a ZWNJ inbetween to stop (most?) features from applying.
+        hb_buf.add_codepoints((first_gid, ZWNJ_CODEPOINT, second_gid))
         hb_buf.guess_segment_properties()
         hb.shape(hb_font, hb_buf, None)
+        assert len(hb_buf.glyph_infos) == 2
 
         first_glyph_advance = hb_buf.glyph_positions[0].x_advance
         first_glyph_kerning = first_glyph_advance - hb_advance_width
@@ -115,7 +122,13 @@ def get_glyph_id(font: hb.Font, codepoint: int, user_data: None) -> int:
 
     This makes it possible to select glyphs by just their glyph ID instead of
     replicating the logic to shape from Unicode codepoints to glyph ID.
+
+    ZWNJ is a special case inserted to stop features from being applied, but
+    keep kerning. It doesn't matter to HarfBuzz whether it exists so we just
+    return GID 0. HarfBuzz also inserts a zero-width space codepoint somewhere.
     """
+    if codepoint == SPACE_CODEPOINT or codepoint == ZWNJ_CODEPOINT:
+        return 0
     assert codepoint >= GID_PREFIX, codepoint
     return codepoint - GID_PREFIX
 
