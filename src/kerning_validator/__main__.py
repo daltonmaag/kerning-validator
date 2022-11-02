@@ -109,14 +109,14 @@ def validate_kerning(ufo: Font, output_dir: Path | None) -> None:
         shaped_names = [tt_font.getGlyphName(i.codepoint) for i in hb_buf.glyph_infos]
         assert shaped_names == [first, second], shaped_names
 
-        if direction == "RTL":
-            first_glyph_advance = hb_buf.glyph_positions[1].x_advance
-        else:
-            first_glyph_advance = hb_buf.glyph_positions[0].x_advance
-        first_glyph_kerning = first_glyph_advance - hb_advance_width
-        if first_glyph_kerning != reference_value:
+        kerning_value = (
+            hb_buf.glyph_positions[0].x_advance
+            + hb_buf.glyph_positions[1].x_advance
+            - 2 * hb_advance_width
+        )
+        if kerning_value != reference_value:
             print(
-                f"Script {script}: {first} {second} should be {reference_value} but is {first_glyph_kerning}"
+                f"Script {script}: {first} {second} should be {reference_value} but is {kerning_value}"
             )
 
 
