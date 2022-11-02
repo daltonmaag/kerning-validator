@@ -130,6 +130,8 @@ def validate_kerning(ufo: Font, parsed_args) -> None:
             print(
                 f"Script {script}: {first} {second} should be {reference_value} but is {kerning_value}"
             )
+            print(f"{script=} {direction=}")
+            print("Returned buffer was: ", "|".join([glyphOrder[info.codepoint] for info in hb_buf.glyph_infos]))
             if parsed_args.stepwise:
                 sys.exit(1)
 
