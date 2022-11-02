@@ -124,6 +124,12 @@ def validate_kerning(
     else:
         report_progress = lambda gen: gen
 
+    # Plan: iterate over every combination of kern1 and kern2 glyph (standalone
+    # or member of group), but, to simulate real-world-application itemization
+    # runs, only if both are of the same script or at least one is a "common"
+    # script. Some glyphs may be associated with more than one script (e.g.
+    # U+0951 DEVANAGARI STRESS SIGN UDATTA), so repeat the pair for all of these
+    # scripts.
     for script, (first, second) in report_progress(
         iterate_script_and_pairs(
             first_glyphs, second_glyphs, glyph_scripts, glyph_bidis
