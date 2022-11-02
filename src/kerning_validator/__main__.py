@@ -62,8 +62,9 @@ def validate_kerning(ufo: Font, parsed_args) -> None:
     if parsed_args.output_dir is not None:
         output_font = parsed_args.output_dir / Path(ufo.reader.path).with_suffix(".ttf").name
         output_font.write_bytes(tt_font_blob.getvalue())
+    glyphOrder = tt_font.getGlyphOrder()
     glyph_id: dict[str, int] = {
-        v: GID_PREFIX + k for k, v in enumerate(tt_font.glyphOrder)
+        v: GID_PREFIX + k for k, v in enumerate(glyphOrder)
     }
 
     glyph_scripts, glyph_bidis = classify_glyphs(tt_font)
