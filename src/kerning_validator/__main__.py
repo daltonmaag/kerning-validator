@@ -135,16 +135,8 @@ def validate_kerning(
             first_glyphs, second_glyphs, glyph_scripts, glyph_bidis
         )
     ):
+        reference_value = lookupKerningValue((first, second), ufo.kerning, ufo.groups)
         direction = unicodedata.script_horizontal_direction(script)
-
-        if direction == "RTL":
-            reference_value = lookupKerningValue(
-                (second, first), ufo.kerning, ufo.groups
-            )
-        else:
-            reference_value = lookupKerningValue(
-                (first, second), ufo.kerning, ufo.groups
-            )
 
         first_gid = glyph_id[first]
         second_gid = glyph_id[second]
@@ -152,14 +144,16 @@ def validate_kerning(
         hb_buf.script = script
         hb_buf.direction = direction
         # Insert a ZWNJ inbetween to stop (most?) features from applying.
-        if direction == "RTL":
-            hb_buf.add_codepoints((second_gid, ZWNJ_CODEPOINT, first_gid))
-        else:
-            hb_buf.add_codepoints((first_gid, ZWNJ_CODEPOINT, second_gid))
+        hb_buf.add_codepoints((first_gid, ZWNJ_CODEPOINT, second_gid))
         hb.shape(hb_font, hb_buf, None)
 
-        # Sanity checks to ensure HarfBuzz doesn't do unexpected substitutions:
-        shaped_names = [tt_font.getGlyphName(i.codepoint) for i in hb_buf.glyph_infos]
+        # Sanity checks to ensure HarfBuzz doesn't do unexpected substitutions.
+        # The returned buffer is ready for LTR rendering, so RTL glyphs are
+        # stored "backwards" with advance widths reversed.
+        glyph_infos = (
+            hb_buf.glyph_infos if direction == "LTR" else reversed(hb_buf.glyph_infos)
+        )
+        shaped_names = [tt_font.getGlyphName(i.codepoint) for i in glyph_infos]
         assert shaped_names == [first, second], shaped_names
 
         # The kerning value is added to the advance width of either glyph
