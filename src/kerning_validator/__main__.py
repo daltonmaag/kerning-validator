@@ -109,6 +109,8 @@ def validate_kerning(ufo: Font, output_dir: Path | None) -> None:
         shaped_names = [tt_font.getGlyphName(i.codepoint) for i in hb_buf.glyph_infos]
         assert shaped_names == [first, second], shaped_names
 
+        # The kerning value is added to the advance width of either glyph
+        # depending on direction.
         kerning_value = (
             hb_buf.glyph_positions[0].x_advance
             + hb_buf.glyph_positions[1].x_advance
