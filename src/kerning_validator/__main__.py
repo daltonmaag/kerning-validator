@@ -8,6 +8,7 @@ import argparse
 import itertools
 from io import BytesIO
 from typing import Mapping, Sequence
+from pathlib import Path
 
 import ufo2ft
 import uharfbuzz as hb
@@ -34,18 +35,27 @@ BAD_BIDIS = {"L", "R"}
 def main(args: list[str] | None = None):
     parser = argparse.ArgumentParser()
     parser.add_argument("ufos", nargs="+", type=Font.open)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Write the compiled fonts to a directory, for inspection.",
+    )
     parsed_args = parser.parse_args(args)
 
+    output_dir: Path | None = parsed_args.output_dir
     ufo: Font
     for ufo in parsed_args.ufos:
-        validate_kerning(ufo)
+        validate_kerning(ufo, output_dir)
 
 
-def validate_kerning(ufo: Font) -> None:
+def validate_kerning(ufo: Font, output_dir: Path | None) -> None:
     clear_ufo(ufo)
     tt_font = ufo2ft.compileTTF(ufo, useProductionNames=False)
     tt_font_blob = BytesIO()
     tt_font.save(tt_font_blob)
+    if output_dir is not None:
+        output_font = output_dir / Path(ufo.reader.path).with_suffix(".ttf").name
+        output_font.write_bytes(tt_font_blob.getvalue())
     glyph_id: dict[str, int] = {
         v: GID_PREFIX + k for k, v in enumerate(tt_font.glyphOrder)
     }
