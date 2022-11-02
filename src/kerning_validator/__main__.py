@@ -110,7 +110,7 @@ def validate_kerning(ufo: Font) -> None:
             hb_buf.add_codepoints((second_gid, ZWNJ_CODEPOINT, first_gid))
         else:
             hb_buf.add_codepoints((first_gid, ZWNJ_CODEPOINT, second_gid))
-        hb.shape(hb_font, hb_buf, None)
+        hb.shape(hb_font, hb_buf, {"locl": False})
         assert len(hb_buf.glyph_infos) == 2
 
         if direction == "RTL":
