@@ -61,7 +61,7 @@ def main(args: list[str] | None = None):
 
     output_dir: Path | None = parsed_args.output_dir
     progress_bar: bool = parsed_args.progress
-    debug_feature_file: StringIO = parsed_args.debug_feature_file
+    debug_feature_file: StringIO | None = parsed_args.debug_feature_file
     stepwise: bool = parsed_args.stepwise
     ufo: Font
     for ufo in parsed_args.ufos:
@@ -72,7 +72,7 @@ def validate_kerning(
     ufo: Font,
     output_dir: Path | None,
     progress_bar: bool,
-    debug_feature_file: StringIO,
+    debug_feature_file: StringIO | None,
     stepwise: bool,
 ) -> None:
     # Clear out glyphs to speed up compile.
