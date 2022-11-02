@@ -62,7 +62,9 @@ def validate_kerning(ufo: Font) -> None:
     # UPM as every glyph's width. That's fine, we just want the kerning value.
     hb_advance_width = hb_face.upem
 
-    first_glyphs, second_glyphs = bucket_kerned_glyphs(ufo.kerning.keys(), ufo.groups)
+    first_glyphs, second_glyphs = bucket_kerned_glyphs(
+        ufo.kerning.keys(), ufo.groups, glyph_scripts
+    )
     first_glyphs.intersection_update(glyph_id)
     second_glyphs.intersection_update(glyph_id)
 
@@ -174,7 +176,9 @@ def script_extensions_for_codepoint(uv: int) -> set[str]:
 
 
 def bucket_kerned_glyphs(
-    kerning: Sequence[tuple[str, str]], groups: Mapping[str, list[str]]
+    kerning: Sequence[tuple[str, str]],
+    groups: Mapping[str, list[str]],
+    glyph_scripts: dict[str, set[str]],
 ) -> tuple[set[str], set[str]]:
     first_glyphs: set[str] = set()
     second_glyphs: set[str] = set()
@@ -188,6 +192,12 @@ def bucket_kerned_glyphs(
             second_glyphs.update(groups[second])
         else:
             second_glyphs.add(second)
+
+    # Skip unreachable glyphs, i.e. those without a codepoint and not reachable
+    # via substitution. This includes accidentally kerned glyphs that are only
+    # used as components.
+    first_glyphs.intersection_update(glyph_scripts)
+    second_glyphs.intersection_update(glyph_scripts)
 
     return first_glyphs, second_glyphs
 
