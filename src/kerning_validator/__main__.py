@@ -153,7 +153,6 @@ def validate_kerning(
         hb.shape(hb_font, hb_buf, None)
 
         # Sanity checks to ensure HarfBuzz doesn't do unexpected substitutions:
-        assert len(hb_buf.glyph_infos) == 2
         shaped_names = [tt_font.getGlyphName(i.codepoint) for i in hb_buf.glyph_infos]
         assert shaped_names == [first, second], shaped_names
 
