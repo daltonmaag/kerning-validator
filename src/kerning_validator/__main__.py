@@ -13,6 +13,7 @@ from typing import Iterator, Mapping, Sequence
 
 import ufo2ft
 import uharfbuzz as hb
+import tqdm
 from fontTools import unicodedata
 from fontTools.ttLib import TTFont
 from fontTools.ufoLib.kerning import lookupKerningValue
@@ -42,6 +43,11 @@ def main(args: list[str] | None = None):
         help="Stop after the first failure.",
     )
     parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="Report progress.",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         help="Write the compiled fonts to a directory, for inspection.",
@@ -64,6 +70,8 @@ def validate_kerning(ufo: Font, parsed_args) -> None:
     tt_font = ufo2ft.compileTTF(ufo, useProductionNames=False,
         featureWriters=[KernFeatureWriter],
         debugFeatureFile=parsed_args.debug_feature_file)
+    if parsed_args.progress:
+        print("Compiled TTF")
     if parsed_args.output_dir is not None:
         output_font = parsed_args.output_dir / Path(ufo.reader.path).with_suffix(".ttf").name
         output_font.write_bytes(tt_font_blob.getvalue())
@@ -78,6 +86,8 @@ def validate_kerning(ufo: Font, parsed_args) -> None:
     del tt_font["GSUB"]
     tt_font_blob = BytesIO()
     tt_font.save(tt_font_blob)
+    if parsed_args.progress:
+        print("Saved TTF")
 
     hb_blob = hb.Blob(tt_font_blob.getvalue())
     hb_face = hb.Face(hb_blob)
@@ -95,9 +105,14 @@ def validate_kerning(ufo: Font, parsed_args) -> None:
     first_glyphs.intersection_update(glyph_id)
     second_glyphs.intersection_update(glyph_id)
 
-    for script, (first, second) in iterate_script_and_pairs(
+    if parsed_args.progress:
+        report_progress = lambda gen: tqdm.tqdm(list(gen))
+    else:
+        report_progress = lambda gen: gen
+
+    for script, (first, second) in report_progress(iterate_script_and_pairs(
         first_glyphs, second_glyphs, glyph_scripts, glyph_bidis
-    ):
+    )):
         direction = unicodedata.script_horizontal_direction(script)
 
         if direction == "RTL":

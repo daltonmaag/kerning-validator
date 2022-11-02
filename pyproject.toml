@@ -28,6 +28,7 @@ dependencies = [
   "ufo2ft",
   "ufoLib2",
   "uharfbuzz",
+  "tqdm",
 ]
 dynamic = ["version"]
 
