@@ -65,7 +65,7 @@ def main(args: list[str] | None = None):
         validate_kerning(ufo, parsed_args)
 
 
-def validate_kerning(ufo: Font, parsed_args) -> None:
+def validate_kerning(ufo: Font, parsed_args: argparse.Namespace) -> None:
     clear_ufo(ufo)
     tt_font = ufo2ft.compileTTF(ufo, useProductionNames=False,
         featureWriters=[KernFeatureWriter],
