@@ -9,7 +9,7 @@ import itertools
 import sys
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Iterator, Mapping, Sequence
+from typing import Callable, Dict, Iterable, Mapping, Sequence, Set, Tuple
 
 import tqdm
 import ufo2ft
@@ -33,8 +33,11 @@ SPACE_CODEPOINT = 0x0020
 # Shapers hate this one mixing of bidi types in a kerning pair.
 BAD_BIDIS = {"L", "R"}
 
+PairIterable = Iterable[Tuple[str, Tuple[str, str]]]
+GlyphProperties = Dict[str, Set[str]]
 
-def main(args: list[str] | None = None):
+
+def main(args: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("ufos", nargs="+", type=Font.open)
     parser.add_argument(
@@ -99,6 +102,7 @@ def validate_kerning(
     tt_font_blob = BytesIO()
     tt_font.save(tt_font_blob)
     if output_dir is not None:
+        assert ufo.reader is not None
         output_font = output_dir / Path(ufo.reader.path).with_suffix(".ttf").name
         output_font.write_bytes(tt_font_blob.getvalue())
     if progress_bar:
@@ -121,7 +125,9 @@ def validate_kerning(
     second_glyphs.intersection_update(glyph_id)
 
     if progress_bar:
-        report_progress = lambda gen: tqdm.tqdm(list(gen))
+        report_progress: Callable[[PairIterable], PairIterable] = lambda gen: tqdm.tqdm(
+            list(gen)
+        )
     else:
         report_progress = lambda gen: gen
 
@@ -198,18 +204,18 @@ def get_glyph_id(font: hb.Font, codepoint: int, user_data: None) -> int:
     return codepoint
 
 
-def classify_glyphs(font: TTFont) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
+def classify_glyphs(font: TTFont) -> tuple[GlyphProperties, GlyphProperties]:
     cmap = font.getBestCmap()
     gsub = font["GSUB"]
 
     scripts = classifyGlyphs(script_extensions_for_codepoint, cmap, gsub)
-    glyph_scripts: dict[str, set[str]] = {}
+    glyph_scripts: GlyphProperties = {}
     for script, glyphs in scripts.items():
         for name in glyphs:
             glyph_scripts.setdefault(name, set()).add(script)
 
     bidis = classifyGlyphs(unicodeBidiType, cmap, gsub)
-    glyph_bidis: dict[str, set[str]] = {}
+    glyph_bidis: GlyphProperties = {}
     for bidi, glyphs in bidis.items():
         for name in glyphs:
             glyph_bidis.setdefault(name, set()).add(bidi)
@@ -224,7 +230,7 @@ def script_extensions_for_codepoint(uv: int) -> set[str]:
 def bucket_kerned_glyphs(
     kerning: Sequence[tuple[str, str]],
     groups: Mapping[str, list[str]],
-    glyph_scripts: dict[str, set[str]],
+    glyph_scripts: GlyphProperties,
 ) -> tuple[set[str], set[str]]:
     first_glyphs: set[str] = set()
     second_glyphs: set[str] = set()
@@ -251,9 +257,9 @@ def bucket_kerned_glyphs(
 def iterate_script_and_pairs(
     first_glyphs: set[str],
     second_glyphs: set[str],
-    glyph_scripts: dict[str, set[str]],
-    glyph_bidis: dict[str, set[str]],
-) -> Iterator[tuple[str, tuple[str, str]]]:
+    glyph_scripts: GlyphProperties,
+    glyph_bidis: GlyphProperties,
+) -> PairIterable:
     for first, second in itertools.product(sorted(first_glyphs), sorted(second_glyphs)):
         # Skip pairs with mixed bidirectionality. BiDi segmentation in
         # applications ensures that bidi mixing won't typically occur.
