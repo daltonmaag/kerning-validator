@@ -8,14 +8,16 @@ import argparse
 import itertools
 from io import BytesIO
 from pathlib import Path
+import sys
 from typing import Iterator, Mapping, Sequence
 
 import ufo2ft
 import uharfbuzz as hb
+import tqdm
 from fontTools import unicodedata
 from fontTools.ttLib import TTFont
 from fontTools.ufoLib.kerning import lookupKerningValue
-from ufo2ft.featureWriters.kernFeatureWriter import unicodeBidiType
+from ufo2ft.featureWriters.kernFeatureWriter import unicodeBidiType, KernFeatureWriter
 from ufo2ft.util import DFLT_SCRIPTS, classifyGlyphs
 from ufoLib2 import Font
 
@@ -36,31 +38,56 @@ def main(args: list[str] | None = None):
     parser = argparse.ArgumentParser()
     parser.add_argument("ufos", nargs="+", type=Font.open)
     parser.add_argument(
+        "--stepwise",
+        action="store_true",
+        help="Stop after the first failure.",
+    )
+    parser.add_argument(
+        "--progress",
+        action="store_true",
+        help="Report progress.",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         help="Write the compiled fonts to a directory, for inspection.",
+    )
+    parser.add_argument(
+        "--debug-feature-file",
+        type=argparse.FileType('w'),
+        help="Write the feature file to the given path",
     )
     parsed_args = parser.parse_args(args)
 
     output_dir: Path | None = parsed_args.output_dir
     ufo: Font
     for ufo in parsed_args.ufos:
-        validate_kerning(ufo, output_dir)
+        validate_kerning(ufo, parsed_args)
 
 
-def validate_kerning(ufo: Font, output_dir: Path | None) -> None:
+def validate_kerning(ufo: Font, parsed_args: argparse.Namespace) -> None:
     clear_ufo(ufo)
-    tt_font = ufo2ft.compileTTF(ufo, useProductionNames=False)
-    tt_font_blob = BytesIO()
-    tt_font.save(tt_font_blob)
-    if output_dir is not None:
-        output_font = output_dir / Path(ufo.reader.path).with_suffix(".ttf").name
+    tt_font = ufo2ft.compileTTF(ufo, useProductionNames=False,
+        featureWriters=[KernFeatureWriter],
+        debugFeatureFile=parsed_args.debug_feature_file)
+    if parsed_args.progress:
+        print("Compiled TTF")
+    if parsed_args.output_dir is not None:
+        output_font = parsed_args.output_dir / Path(ufo.reader.path).with_suffix(".ttf").name
         output_font.write_bytes(tt_font_blob.getvalue())
+    glyphOrder = tt_font.getGlyphOrder()
     glyph_id: dict[str, int] = {
-        v: GID_PREFIX + k for k, v in enumerate(tt_font.glyphOrder)
+        v: GID_PREFIX + k for k, v in enumerate(glyphOrder)
     }
 
     glyph_scripts, glyph_bidis = classify_glyphs(tt_font)
+
+    # Drop GSUB now
+    del tt_font["GSUB"]
+    tt_font_blob = BytesIO()
+    tt_font.save(tt_font_blob)
+    if parsed_args.progress:
+        print("Saved TTF")
 
     hb_blob = hb.Blob(tt_font_blob.getvalue())
     hb_face = hb.Face(hb_blob)
@@ -78,9 +105,14 @@ def validate_kerning(ufo: Font, output_dir: Path | None) -> None:
     first_glyphs.intersection_update(glyph_id)
     second_glyphs.intersection_update(glyph_id)
 
-    for script, (first, second) in iterate_script_and_pairs(
+    if parsed_args.progress:
+        report_progress = lambda gen: tqdm.tqdm(list(gen))
+    else:
+        report_progress = lambda gen: gen
+
+    for script, (first, second) in report_progress(iterate_script_and_pairs(
         first_glyphs, second_glyphs, glyph_scripts, glyph_bidis
-    ):
+    )):
         direction = unicodedata.script_horizontal_direction(script)
 
         if direction == "RTL":
@@ -118,8 +150,10 @@ def validate_kerning(ufo: Font, output_dir: Path | None) -> None:
         )
         if kerning_value != reference_value:
             print(
-                f"Script {script}: {first} {second} should be {reference_value} but is {kerning_value}"
+                f"{script=} {direction=}: {first} {second} should be {reference_value} but is {kerning_value}"
             )
+            if parsed_args.stepwise:
+                sys.exit(1)
 
 
 def clear_ufo(ufo: Font) -> None:
@@ -141,8 +175,9 @@ def get_glyph_id(font: hb.Font, codepoint: int, user_data: None) -> int:
     """
     if codepoint == SPACE_CODEPOINT or codepoint == ZWNJ_CODEPOINT:
         return 0
-    assert codepoint >= GID_PREFIX, codepoint
-    return codepoint - GID_PREFIX
+    if codepoint >= GID_PREFIX:
+        return codepoint - GID_PREFIX
+    return codepoint
 
 
 def classify_glyphs(font: TTFont) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
