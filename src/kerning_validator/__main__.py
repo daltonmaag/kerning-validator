@@ -7,8 +7,8 @@ from __future__ import annotations
 import argparse
 import itertools
 from io import BytesIO
-from typing import Mapping, Sequence
 from pathlib import Path
+from typing import Iterator, Mapping, Sequence
 
 import ufo2ft
 import uharfbuzz as hb
@@ -60,7 +60,7 @@ def validate_kerning(ufo: Font, output_dir: Path | None) -> None:
         v: GID_PREFIX + k for k, v in enumerate(tt_font.glyphOrder)
     }
 
-    glyph_scripts, script_bidis = classify_glyphs(tt_font)
+    glyph_scripts, glyph_bidis = classify_glyphs(tt_font)
 
     hb_blob = hb.Blob(tt_font_blob.getvalue())
     hb_face = hb.Face(hb_blob)
@@ -78,27 +78,9 @@ def validate_kerning(ufo: Font, output_dir: Path | None) -> None:
     first_glyphs.intersection_update(glyph_id)
     second_glyphs.intersection_update(glyph_id)
 
-    for first, second in itertools.product(sorted(first_glyphs), sorted(second_glyphs)):
-        # Skip pairs that mix explicit scripts (implicit scripts like Zyyy are
-        # fine), because in real-world applications, text is segmented into text
-        # runs for each script. Cross-script kerning is therefore never applied.
-        pair_scripts: set[str] = {
-            *glyph_scripts.get(first, []),
-            *glyph_scripts.get(second, []),
-        } - DFLT_SCRIPTS
-        if len(pair_scripts) > 1:
-            continue
-
-        # Directionality runs also ensure that bidi mixing won't typically occur
-        # in real applications.
-        pair_bidis: set[str] = {
-            *script_bidis.get(first, []),
-            *script_bidis.get(second, []),
-        }
-        if pair_bidis.issuperset(BAD_BIDIS):
-            continue
-
-        script = next(iter(pair_scripts), "Zyyy")
+    for script, (first, second) in iterate_script_and_pairs(
+        first_glyphs, second_glyphs, glyph_scripts, glyph_bidis
+    ):
         direction = unicodedata.script_horizontal_direction(script)
 
         if direction == "RTL":
@@ -210,6 +192,42 @@ def bucket_kerned_glyphs(
     second_glyphs.intersection_update(glyph_scripts)
 
     return first_glyphs, second_glyphs
+
+
+def iterate_script_and_pairs(
+    first_glyphs: set[str],
+    second_glyphs: set[str],
+    glyph_scripts: dict[str, set[str]],
+    glyph_bidis: dict[str, set[str]],
+) -> Iterator[tuple[str, tuple[str, str]]]:
+    for first, second in itertools.product(sorted(first_glyphs), sorted(second_glyphs)):
+        # Directionality runs also ensure that bidi mixing won't typically occur
+        # in real applications.
+        pair_bidis: set[str] = {
+            *glyph_bidis.get(first, []),
+            *glyph_bidis.get(second, []),
+        }
+        if pair_bidis.issuperset(BAD_BIDIS):
+            continue
+
+        # Skip pairs that mix explicit scripts (implicit scripts like Zyyy are
+        # fine), because in real-world applications, text is segmented into text
+        # runs for each script. Cross-script kerning is therefore never applied.
+        # A glyph might be member of multiple scripts for reasons, though, so
+        # ensure we hit all combinations.
+        first_scripts = glyph_scripts[first]
+        second_scripts = glyph_scripts[second]
+        for first_script, second_script in itertools.product(
+            first_scripts, second_scripts
+        ):
+            if first_script == second_script:
+                yield first_script, (first, second)
+            elif first_script in DFLT_SCRIPTS:
+                yield second_script, (first, second)
+            elif second_script in DFLT_SCRIPTS:
+                yield first_script, (first, second)
+            else:
+                continue
 
 
 if __name__ == "__main__":
