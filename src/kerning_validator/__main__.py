@@ -6,18 +6,18 @@ from __future__ import annotations
 
 import argparse
 import itertools
-from io import BytesIO
-from pathlib import Path
 import sys
+from io import BytesIO, StringIO
+from pathlib import Path
 from typing import Iterator, Mapping, Sequence
 
+import tqdm
 import ufo2ft
 import uharfbuzz as hb
-import tqdm
 from fontTools import unicodedata
 from fontTools.ttLib import TTFont
 from fontTools.ufoLib.kerning import lookupKerningValue
-from ufo2ft.featureWriters.kernFeatureWriter import unicodeBidiType, KernFeatureWriter
+from ufo2ft.featureWriters.kernFeatureWriter import KernFeatureWriter, unicodeBidiType
 from ufo2ft.util import DFLT_SCRIPTS, classifyGlyphs
 from ufoLib2 import Font
 
@@ -54,39 +54,53 @@ def main(args: list[str] | None = None):
     )
     parser.add_argument(
         "--debug-feature-file",
-        type=argparse.FileType('w'),
+        type=argparse.FileType("w"),
         help="Write the feature file to the given path",
     )
     parsed_args = parser.parse_args(args)
 
     output_dir: Path | None = parsed_args.output_dir
+    progress_bar: bool = parsed_args.progress
+    debug_feature_file: StringIO = parsed_args.debug_feature_file
+    stepwise: bool = parsed_args.stepwise
     ufo: Font
     for ufo in parsed_args.ufos:
-        validate_kerning(ufo, parsed_args)
+        validate_kerning(ufo, output_dir, progress_bar, debug_feature_file, stepwise)
 
 
-def validate_kerning(ufo: Font, parsed_args: argparse.Namespace) -> None:
+def validate_kerning(
+    ufo: Font,
+    output_dir: Path | None,
+    progress_bar: bool,
+    debug_feature_file: StringIO,
+    stepwise: bool,
+) -> None:
+    # Clear out glyphs to speed up compile.
     clear_ufo(ufo)
-    tt_font = ufo2ft.compileTTF(ufo, useProductionNames=False,
+
+    # Compile font with just the kerning feature writer to speed up the compile.
+    tt_font = ufo2ft.compileTTF(
+        ufo,
+        useProductionNames=False,
         featureWriters=[KernFeatureWriter],
-        debugFeatureFile=parsed_args.debug_feature_file)
-    if parsed_args.progress:
+        debugFeatureFile=debug_feature_file,
+    )
+    if progress_bar:
         print("Compiled TTF")
-    if parsed_args.output_dir is not None:
-        output_font = parsed_args.output_dir / Path(ufo.reader.path).with_suffix(".ttf").name
-        output_font.write_bytes(tt_font_blob.getvalue())
+
     glyphOrder = tt_font.getGlyphOrder()
-    glyph_id: dict[str, int] = {
-        v: GID_PREFIX + k for k, v in enumerate(glyphOrder)
-    }
+    glyph_id: dict[str, int] = {v: GID_PREFIX + k for k, v in enumerate(glyphOrder)}
 
     glyph_scripts, glyph_bidis = classify_glyphs(tt_font)
 
-    # Drop GSUB now
+    # Drop the GSUB table now to avoid any substitutions from being applied.
     del tt_font["GSUB"]
     tt_font_blob = BytesIO()
     tt_font.save(tt_font_blob)
-    if parsed_args.progress:
+    if output_dir is not None:
+        output_font = output_dir / Path(ufo.reader.path).with_suffix(".ttf").name
+        output_font.write_bytes(tt_font_blob.getvalue())
+    if progress_bar:
         print("Saved TTF")
 
     hb_blob = hb.Blob(tt_font_blob.getvalue())
@@ -105,14 +119,16 @@ def validate_kerning(ufo: Font, parsed_args: argparse.Namespace) -> None:
     first_glyphs.intersection_update(glyph_id)
     second_glyphs.intersection_update(glyph_id)
 
-    if parsed_args.progress:
+    if progress_bar:
         report_progress = lambda gen: tqdm.tqdm(list(gen))
     else:
         report_progress = lambda gen: gen
 
-    for script, (first, second) in report_progress(iterate_script_and_pairs(
-        first_glyphs, second_glyphs, glyph_scripts, glyph_bidis
-    )):
+    for script, (first, second) in report_progress(
+        iterate_script_and_pairs(
+            first_glyphs, second_glyphs, glyph_scripts, glyph_bidis
+        )
+    ):
         direction = unicodedata.script_horizontal_direction(script)
 
         if direction == "RTL":
@@ -134,7 +150,7 @@ def validate_kerning(ufo: Font, parsed_args: argparse.Namespace) -> None:
             hb_buf.add_codepoints((second_gid, ZWNJ_CODEPOINT, first_gid))
         else:
             hb_buf.add_codepoints((first_gid, ZWNJ_CODEPOINT, second_gid))
-        hb.shape(hb_font, hb_buf, {"locl": False})
+        hb.shape(hb_font, hb_buf, None)
 
         # Sanity checks to ensure HarfBuzz doesn't do unexpected substitutions:
         assert len(hb_buf.glyph_infos) == 2
@@ -152,7 +168,7 @@ def validate_kerning(ufo: Font, parsed_args: argparse.Namespace) -> None:
             print(
                 f"{script=} {direction=}: {first} {second} should be {reference_value} but is {kerning_value}"
             )
-            if parsed_args.stepwise:
+            if stepwise:
                 sys.exit(1)
 
 
