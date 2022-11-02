@@ -8,6 +8,7 @@ import argparse
 import itertools
 from io import BytesIO
 from pathlib import Path
+import sys
 from typing import Iterator, Mapping, Sequence
 
 import ufo2ft
@@ -36,6 +37,11 @@ def main(args: list[str] | None = None):
     parser = argparse.ArgumentParser()
     parser.add_argument("ufos", nargs="+", type=Font.open)
     parser.add_argument(
+        "--stepwise",
+        action="store_true",
+        help="Stop after the first failure.",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         help="Write the compiled fonts to a directory, for inspection.",
@@ -45,16 +51,16 @@ def main(args: list[str] | None = None):
     output_dir: Path | None = parsed_args.output_dir
     ufo: Font
     for ufo in parsed_args.ufos:
-        validate_kerning(ufo, output_dir)
+        validate_kerning(ufo, parsed_args)
 
 
-def validate_kerning(ufo: Font, output_dir: Path | None) -> None:
+def validate_kerning(ufo: Font, parsed_args) -> None:
     clear_ufo(ufo)
     tt_font = ufo2ft.compileTTF(ufo, useProductionNames=False)
     tt_font_blob = BytesIO()
     tt_font.save(tt_font_blob)
-    if output_dir is not None:
-        output_font = output_dir / Path(ufo.reader.path).with_suffix(".ttf").name
+    if parsed_args.output_dir is not None:
+        output_font = parsed_args.output_dir / Path(ufo.reader.path).with_suffix(".ttf").name
         output_font.write_bytes(tt_font_blob.getvalue())
     glyph_id: dict[str, int] = {
         v: GID_PREFIX + k for k, v in enumerate(tt_font.glyphOrder)
@@ -120,6 +126,8 @@ def validate_kerning(ufo: Font, output_dir: Path | None) -> None:
             print(
                 f"Script {script}: {first} {second} should be {reference_value} but is {kerning_value}"
             )
+            if parsed_args.stepwise:
+                sys.exit(1)
 
 
 def clear_ufo(ufo: Font) -> None:
