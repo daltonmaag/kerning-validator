@@ -116,12 +116,7 @@ def validate_kerning(ufo: Font, output_dir: Path | None) -> None:
         first_glyph_kerning = first_glyph_advance - hb_advance_width
         if first_glyph_kerning != reference_value:
             print(
-                first,
-                second,
-                "should be",
-                reference_value,
-                "but is",
-                first_glyph_kerning,
+                f"Script {script}: {first} {second} should be {reference_value} but is {first_glyph_kerning}"
             )
 
 
