@@ -260,6 +260,8 @@ def iterate_script_and_pairs(
     glyph_scripts: GlyphProperties,
     glyph_bidis: GlyphProperties,
 ) -> PairIterable:
+    # Imitate real world text itemization by filtering out pairs that wouldn't
+    # occur next to each otehr in the same run.
     for first, second in itertools.product(sorted(first_glyphs), sorted(second_glyphs)):
         # Skip pairs with mixed bidirectionality. BiDi segmentation in
         # applications ensures that bidi mixing won't typically occur.
