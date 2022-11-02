@@ -57,8 +57,6 @@ def main(args: list[str] | None = None):
 def validate_kerning(ufo: Font, parsed_args) -> None:
     clear_ufo(ufo)
     tt_font = ufo2ft.compileTTF(ufo, useProductionNames=False)
-    tt_font_blob = BytesIO()
-    tt_font.save(tt_font_blob)
     if parsed_args.output_dir is not None:
         output_font = parsed_args.output_dir / Path(ufo.reader.path).with_suffix(".ttf").name
         output_font.write_bytes(tt_font_blob.getvalue())
@@ -68,6 +66,11 @@ def validate_kerning(ufo: Font, parsed_args) -> None:
     }
 
     glyph_scripts, glyph_bidis = classify_glyphs(tt_font)
+
+    # Drop GSUB now
+    del tt_font["GSUB"]
+    tt_font_blob = BytesIO()
+    tt_font.save(tt_font_blob)
 
     hb_blob = hb.Blob(tt_font_blob.getvalue())
     hb_face = hb.Face(hb_blob)
