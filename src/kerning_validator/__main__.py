@@ -170,7 +170,13 @@ def get_glyph_id(font: hb.Font, codepoint: int, user_data: None) -> int:
 
     This makes it possible to select glyphs by just their glyph ID instead of
     replicating the logic to shape from Unicode codepoints to glyph ID.
+
+    ZWNJ is a special case inserted to stop features from being applied, but
+    keep kerning. It doesn't matter to HarfBuzz whether it exists so we just
+    return GID 0. HarfBuzz also inserts a zero-width space codepoint somewhere.
     """
+    if codepoint == SPACE_CODEPOINT or codepoint == ZWNJ_CODEPOINT:
+        return 0
     if codepoint >= GID_PREFIX:
         return codepoint - GID_PREFIX
     return codepoint
