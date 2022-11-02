@@ -162,8 +162,9 @@ def get_glyph_id(font: hb.Font, codepoint: int, user_data: None) -> int:
     """
     if codepoint == SPACE_CODEPOINT or codepoint == ZWNJ_CODEPOINT:
         return 0
-    assert codepoint >= GID_PREFIX, codepoint
-    return codepoint - GID_PREFIX
+    if codepoint >= GID_PREFIX:
+        return codepoint - GID_PREFIX
+    return codepoint
 
 
 def classify_glyphs(font: TTFont) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
