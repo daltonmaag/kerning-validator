@@ -93,7 +93,8 @@ def validate_kerning(
 
     glyph_scripts, glyph_bidis = classify_glyphs(tt_font)
 
-    # Drop the GSUB table now to avoid any substitutions from being applied.
+    # Drop the GSUB table now to stop HarfBuzz from applying any substitutions
+    # later in the comparison loop. It must only use what it's given.
     del tt_font["GSUB"]
     tt_font_blob = BytesIO()
     tt_font.save(tt_font_blob)
@@ -187,6 +188,8 @@ def get_glyph_id(font: hb.Font, codepoint: int, user_data: None) -> int:
     ZWNJ is a special case inserted to stop features from being applied, but
     keep kerning. It doesn't matter to HarfBuzz whether it exists so we just
     return GID 0. HarfBuzz also inserts a zero-width space codepoint somewhere.
+    There might be other codepoints that HarfBuzz inserts at some point, just
+    pass them back as is.
     """
     if codepoint == SPACE_CODEPOINT or codepoint == ZWNJ_CODEPOINT:
         return 0
@@ -252,8 +255,8 @@ def iterate_script_and_pairs(
     glyph_bidis: dict[str, set[str]],
 ) -> Iterator[tuple[str, tuple[str, str]]]:
     for first, second in itertools.product(sorted(first_glyphs), sorted(second_glyphs)):
-        # Directionality runs also ensure that bidi mixing won't typically occur
-        # in real applications.
+        # Skip pairs with mixed bidirectionality. BiDi segmentation in
+        # applications ensures that bidi mixing won't typically occur.
         pair_bidis: set[str] = {
             *glyph_bidis.get(first, []),
             *glyph_bidis.get(second, []),
