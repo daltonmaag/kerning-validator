@@ -16,7 +16,7 @@ import uharfbuzz as hb
 from fontTools import unicodedata
 from fontTools.ttLib import TTFont
 from fontTools.ufoLib.kerning import lookupKerningValue
-from ufo2ft.featureWriters.kernFeatureWriter import unicodeBidiType
+from ufo2ft.featureWriters.kernFeatureWriter import unicodeBidiType, KernFeatureWriter
 from ufo2ft.util import DFLT_SCRIPTS, classifyGlyphs
 from ufoLib2 import Font
 
@@ -46,6 +46,11 @@ def main(args: list[str] | None = None):
         type=Path,
         help="Write the compiled fonts to a directory, for inspection.",
     )
+    parser.add_argument(
+        "--debug-feature-file",
+        type=argparse.FileType('w'),
+        help="Write the feature file to the given path",
+    )
     parsed_args = parser.parse_args(args)
 
     output_dir: Path | None = parsed_args.output_dir
@@ -56,7 +61,9 @@ def main(args: list[str] | None = None):
 
 def validate_kerning(ufo: Font, parsed_args) -> None:
     clear_ufo(ufo)
-    tt_font = ufo2ft.compileTTF(ufo, useProductionNames=False)
+    tt_font = ufo2ft.compileTTF(ufo, useProductionNames=False,
+        featureWriters=[KernFeatureWriter],
+        debugFeatureFile=parsed_args.debug_feature_file)
     if parsed_args.output_dir is not None:
         output_font = parsed_args.output_dir / Path(ufo.reader.path).with_suffix(".ttf").name
         output_font.write_bytes(tt_font_blob.getvalue())
