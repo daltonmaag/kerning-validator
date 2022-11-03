@@ -50,12 +50,14 @@ version-file = "src/kerning_validator/__about__.py"
 dependencies = [
   "black",
   "isort",
+  "py-spy",
   "pytest",
   "pytest-cov",
 ]
 [tool.hatch.envs.default.scripts]
 cov = "pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=src/kerning_validator --cov=tests {args}"
 no-cov = "cov --no-cov {args}"
+profile = "py-spy record -n -f speedscope -o speedscope_profile.json -- kerning-validator {args}"
 
 [[tool.hatch.envs.test.matrix]]
 python = ["37", "38", "39", "310", "311"]
