@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import sys
+import re
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Callable, Dict, Iterable, Mapping, Sequence, Set, Tuple
@@ -17,6 +18,7 @@ import uharfbuzz as hb
 from fontTools import unicodedata
 from fontTools.ttLib import TTFont
 from fontTools.ufoLib.kerning import lookupKerningValue
+from ufo2ft.featureCompiler import parseLayoutFeatures
 from ufo2ft.featureWriters.kernFeatureWriter import KernFeatureWriter, unicodeBidiType
 from ufo2ft.util import DFLT_SCRIPTS, classifyGlyphs
 from ufoLib2 import Font
@@ -126,6 +128,16 @@ def validate_kerning(
     else:
         report_progress = lambda gen: gen
 
+    glyphToFirstGroup = {}
+    glyphToSecondGroup = {}
+    for group, groupMembers in ufo.groups.items():
+        if group.startswith("public.kern1."):
+            for glyph in groupMembers:
+                glyphToFirstGroup[glyph] = group
+        elif group.startswith("public.kern2."):
+            for glyph in groupMembers:
+                glyphToSecondGroup[glyph] = group
+
     # Plan: iterate over every combination of kern1 and kern2 glyph (standalone
     # or member of group), but, to simulate real-world-application itemization
     # runs, only if both are of the same script or at least one is a "common"
@@ -137,7 +149,13 @@ def validate_kerning(
             first_glyphs, second_glyphs, glyph_scripts, glyph_bidis
         )
     ):
-        reference_value = lookupKerningValue((first, second), ufo.kerning, ufo.groups)
+        reference_value = lookupKerningValue(
+            (first, second),
+            ufo.kerning,
+            ufo.groups,
+            glyphToFirstGroup=glyphToFirstGroup,
+            glyphToSecondGroup=glyphToSecondGroup,
+        )
         direction = unicodedata.script_horizontal_direction(script)
 
         first_gid = glyph_id[first]
@@ -164,6 +182,7 @@ def validate_kerning(
             + hb_buf.glyph_positions[1].x_advance
             - 2 * hb_advance_width
         )
+
         if kerning_value != reference_value:
             print(
                 f"{script=} {direction=}: {first} {second} should be {reference_value} but is {kerning_value}"
@@ -176,6 +195,12 @@ def clear_ufo(ufo: Font) -> None:
     for glyph in ufo:
         glyph.clearContours()
         glyph.clearComponents()
+    # Ditch everything might interfere with the GPOS table,
+    # we only want to test kerning as applied by the KernFeatureWriter
+    features = parseLayoutFeatures(ufo).asFea()  # Resolve includes
+    ufo.features.text = re.sub(
+        r"(?s)feature (kern|mark|mkmk|curs|dist) {.*} \1;", "", features
+    )
 
 
 def get_glyph_id(font: hb.Font, codepoint: int, user_data: None) -> int:
