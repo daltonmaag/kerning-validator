@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import sys
+import re
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Callable, Dict, Iterable, Mapping, Sequence, Set, Tuple
@@ -176,6 +177,11 @@ def clear_ufo(ufo: Font) -> None:
     for glyph in ufo:
         glyph.clearContours()
         glyph.clearComponents()
+    # Ditch everything might interfere with the GPOS table,
+    # we only want to test kerning as applied by the KernFeatureWriter
+    ufo.features.text = re.sub(
+        r"(?s)feature (kern|mark|mkmk|curs|dist) {.*} \1;", "", ufo.features.text
+    )
 
 
 def get_glyph_id(font: hb.Font, codepoint: int, user_data: None) -> int:
