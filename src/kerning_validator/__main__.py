@@ -127,6 +127,16 @@ def validate_kerning(
     else:
         report_progress = lambda gen: gen
 
+    glyphToFirstGroup = {}
+    glyphToSecondGroup = {}
+    for group, groupMembers in ufo.groups.items():
+        if group.startswith("public.kern1."):
+            for glyph in groupMembers:
+                glyphToFirstGroup[glyph] = group
+        elif group.startswith("public.kern2."):
+            for glyph in groupMembers:
+                glyphToSecondGroup[glyph] = group
+
     # Plan: iterate over every combination of kern1 and kern2 glyph (standalone
     # or member of group), but, to simulate real-world-application itemization
     # runs, only if both are of the same script or at least one is a "common"
@@ -138,7 +148,13 @@ def validate_kerning(
             first_glyphs, second_glyphs, glyph_scripts, glyph_bidis
         )
     ):
-        reference_value = lookupKerningValue((first, second), ufo.kerning, ufo.groups)
+        reference_value = lookupKerningValue(
+            (first, second),
+            ufo.kerning,
+            ufo.groups,
+            glyphToFirstGroup=glyphToFirstGroup,
+            glyphToSecondGroup=glyphToSecondGroup,
+        )
         direction = unicodedata.script_horizontal_direction(script)
 
         first_gid = glyph_id[first]
