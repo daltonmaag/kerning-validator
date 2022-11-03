@@ -182,7 +182,6 @@ def validate_kerning(
             + hb_buf.glyph_positions[1].x_advance
             - 2 * hb_advance_width
         )
-
         if kerning_value != reference_value:
             print(
                 f"{script=} {direction=}: {first} {second} should be {reference_value} but is {kerning_value}"
