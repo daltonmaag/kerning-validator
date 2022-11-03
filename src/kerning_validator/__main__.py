@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import argparse
 import itertools
-import sys
 import re
+import sys
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Callable, Dict, Iterable, Mapping, Sequence, Set, Tuple
@@ -128,8 +128,8 @@ def validate_kerning(
     else:
         report_progress = lambda gen: gen
 
-    glyphToFirstGroup = {}
-    glyphToSecondGroup = {}
+    glyphToFirstGroup: dict[str, str] = {}
+    glyphToSecondGroup: dict[str, str] = {}
     for group, groupMembers in ufo.groups.items():
         if group.startswith("public.kern1."):
             for glyph in groupMembers:
@@ -278,7 +278,7 @@ def iterate_script_and_pairs(
     glyph_bidis: GlyphProperties,
 ) -> PairIterable:
     # Imitate real world text itemization by filtering out pairs that wouldn't
-    # occur next to each otehr in the same run.
+    # occur next to each other in the same run.
     for first, second in itertools.product(sorted(first_glyphs), sorted(second_glyphs)):
         # Skip pairs with mixed bidirectionality. BiDi segmentation in
         # applications ensures that bidi mixing won't typically occur.
