@@ -18,6 +18,7 @@ import uharfbuzz as hb
 from fontTools import unicodedata
 from fontTools.ttLib import TTFont
 from fontTools.ufoLib.kerning import lookupKerningValue
+from ufo2ft.featureCompiler import parseLayoutFeatures
 from ufo2ft.featureWriters.kernFeatureWriter import KernFeatureWriter, unicodeBidiType
 from ufo2ft.util import DFLT_SCRIPTS, classifyGlyphs
 from ufoLib2 import Font
@@ -181,6 +182,7 @@ def validate_kerning(
             + hb_buf.glyph_positions[1].x_advance
             - 2 * hb_advance_width
         )
+
         if kerning_value != reference_value:
             print(
                 f"{script=} {direction=}: {first} {second} should be {reference_value} but is {kerning_value}"
@@ -195,8 +197,9 @@ def clear_ufo(ufo: Font) -> None:
         glyph.clearComponents()
     # Ditch everything might interfere with the GPOS table,
     # we only want to test kerning as applied by the KernFeatureWriter
+    features = parseLayoutFeatures(ufo).asFea()  # Resolve includes
     ufo.features.text = re.sub(
-        r"(?s)feature (kern|mark|mkmk|curs|dist) {.*} \1;", "", ufo.features.text
+        r"(?s)feature (kern|mark|mkmk|curs|dist) {.*} \1;", "", features
     )
 
 
