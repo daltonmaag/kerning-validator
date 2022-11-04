@@ -53,6 +53,11 @@ def main(args: list[str] | None = None) -> None:
         help="Write the compiled fonts to a directory, for inspection.",
     )
     parser.add_argument(
+        "--log-output-dir",
+        type=Path,
+        help="Write error logs to a directory.",
+    )
+    parser.add_argument(
         "--debug-feature-file",
         type=argparse.FileType("w"),
         help="Write the feature file to the given path",
@@ -63,9 +68,12 @@ def main(args: list[str] | None = None) -> None:
     progress_bar: bool = parsed_args.progress
     debug_feature_file: StringIO | None = parsed_args.debug_feature_file
     stepwise: bool = parsed_args.stepwise
+    log_output_dir: Path | None = parsed_args.log_output_dir
     ufo: Font
     for ufo in parsed_args.ufos:
-        validate_kerning(ufo, output_dir, progress_bar, debug_feature_file, stepwise)
+        validate_kerning(
+            ufo, output_dir, progress_bar, debug_feature_file, stepwise, log_output_dir
+        )
 
 
 def validate_kerning(
@@ -74,6 +82,7 @@ def validate_kerning(
     progress_bar: bool,
     debug_feature_file: StringIO | None,
     stepwise: bool,
+    log_output_dir: Path | None,
 ) -> None:
     # Clear out glyphs to speed up compile.
     clear_ufo(ufo)
@@ -103,6 +112,13 @@ def validate_kerning(
         assert ufo.reader is not None
         output_font = output_dir / Path(ufo.reader.path).with_suffix(".ttf").name
         output_font.write_bytes(tt_font_blob.getvalue())
+    if log_output_dir is not None:
+        assert ufo.reader is not None
+        log_output = open(
+            log_output_dir / Path(ufo.reader.path).with_suffix(".txt").name, "w"
+        )
+    else:
+        log_output = sys.stdout  # type: ignore
     if progress_bar:
         print("Saved TTF")
 
@@ -185,10 +201,14 @@ def validate_kerning(
         )
         if kerning_value != reference_value:
             print(
-                f"{script=} {direction=}: {first} {second} should be {reference_value} but is {kerning_value}"
+                f"{script=} {direction=}: {first} {second} should be {reference_value} but is {kerning_value}",
+                file=log_output,
             )
             if stepwise:
                 sys.exit(1)
+
+    if log_output is not sys.stdout:
+        log_output.close()
 
 
 def clear_ufo(ufo: Font) -> None:
