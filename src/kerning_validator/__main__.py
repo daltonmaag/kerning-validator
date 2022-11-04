@@ -95,7 +95,8 @@ def validate_kerning(
 
     # Drop the GSUB table now to stop HarfBuzz from applying any substitutions
     # later in the comparison loop. It must only use what it's given.
-    del tt_font["GSUB"]
+    if "GSUB" in tt_font:
+        del tt_font["GSUB"]
     tt_font_blob = BytesIO()
     tt_font.save(tt_font_blob)
     if output_dir is not None:
@@ -222,7 +223,7 @@ def get_glyph_id(font: hb.Font, codepoint: int, user_data: None) -> int:
 
 def classify_glyphs(font: TTFont) -> tuple[GlyphProperties, GlyphProperties]:
     cmap = font.getBestCmap()
-    gsub = font["GSUB"]
+    gsub = font.get("GSUB")
 
     scripts = classifyGlyphs(script_extensions_for_codepoint, cmap, gsub)
     glyph_scripts: GlyphProperties = {}
