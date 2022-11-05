@@ -26,7 +26,7 @@ classifiers = [
 dependencies = [
   "fontTools",
   "ufo2ft",
-  "ufoLib2",
+  "ufoLib2[json]>=0.14",
   "uharfbuzz",
   "tqdm",
 ]

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import os
 import re
 import sys
 from io import BytesIO, StringIO
@@ -36,7 +37,7 @@ GlyphProperties = Dict[str, Set[str]]
 
 def main(args: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("ufos", nargs="+", type=Font.open)
+    parser.add_argument("ufo", nargs="+", type=Path)
     parser.add_argument(
         "--stepwise",
         action="store_true",
@@ -69,26 +70,44 @@ def main(args: list[str] | None = None) -> None:
     debug_feature_file: StringIO | None = parsed_args.debug_feature_file
     stepwise: bool = parsed_args.stepwise
     log_output_dir: Path | None = parsed_args.log_output_dir
-    ufo: Font
-    for ufo in parsed_args.ufos:
+    ufo_paths: list[Path] = parsed_args.ufo
+    for ufo_path in ufo_paths:
+        ufo = open_ufo(ufo_path)
+        if output_dir is not None:
+            output_font = output_dir / ufo_path.with_suffix(".ttf").name
+        else:
+            output_font = None
+        if log_output_dir is not None:
+            output_log = log_output_dir / ufo_path.with_suffix(".txt").name
+        else:
+            output_log = None
         validate_kerning(
-            ufo, output_dir, progress_bar, debug_feature_file, stepwise, log_output_dir
+            ufo, progress_bar, stepwise, debug_feature_file, output_font, output_log
         )
+
+
+def open_ufo(path: str | os.PathLike[str]) -> Font:
+    path = Path(path)
+    if path.suffix == ".ufo":
+        return Font.open(path)
+    elif path.suffix == ".json":
+        return Font.json_load(path)
+    raise argparse.ArgumentTypeError("Unrecognized format.")
 
 
 def validate_kerning(
     ufo: Font,
-    output_dir: Path | None,
     progress_bar: bool,
-    debug_feature_file: StringIO | None,
     stepwise: bool,
-    log_output_dir: Path | None,
+    debug_feature_file: StringIO | None,
+    output_font: Path | None,
+    output_log: Path | None,
 ) -> None:
     # Clear out glyphs to speed up compile.
     clear_ufo(ufo)
 
     # Compile font with just the kerning feature writer to speed up the compile.
-    tt_font = ufo2ft.compileTTF(
+    tt_font: TTFont = ufo2ft.compileTTF(
         ufo,
         useProductionNames=False,
         featureWriters=[KernFeatureWriter],
@@ -108,15 +127,10 @@ def validate_kerning(
         del tt_font["GSUB"]
     tt_font_blob = BytesIO()
     tt_font.save(tt_font_blob)
-    if output_dir is not None:
-        assert ufo.reader is not None
-        output_font = output_dir / Path(ufo.reader.path).with_suffix(".ttf").name
+    if output_font is not None:
         output_font.write_bytes(tt_font_blob.getvalue())
-    if log_output_dir is not None:
-        assert ufo.reader is not None
-        log_output = open(
-            log_output_dir / Path(ufo.reader.path).with_suffix(".txt").name, "w"
-        )
+    if output_log is not None:
+        log_output = open(output_log, "w")
     else:
         log_output = sys.stdout  # type: ignore
     if progress_bar:
@@ -130,7 +144,7 @@ def validate_kerning(
     hb_font.funcs = funcs
     # We overwrite the font functions, so HarfBuzz defaults to using the font's
     # UPM as every glyph's width. That's fine, we just want the kerning value.
-    hb_advance_width = hb_face.upem
+    hb_advance_width: int = hb_face.upem
 
     first_glyphs, second_glyphs = bucket_kerned_glyphs(
         ufo.kerning.keys(), ufo.groups, glyph_scripts
@@ -166,7 +180,7 @@ def validate_kerning(
             first_glyphs, second_glyphs, glyph_scripts, glyph_bidis
         )
     ):
-        reference_value = lookupKerningValue(
+        reference_value: float = lookupKerningValue(
             (first, second),
             ufo.kerning,
             ufo.groups,
@@ -194,7 +208,7 @@ def validate_kerning(
 
         # The kerning value is added to the advance width of either glyph
         # depending on direction.
-        kerning_value = (
+        kerning_value: int = (
             hb_buf.glyph_positions[0].x_advance
             + hb_buf.glyph_positions[1].x_advance
             - 2 * hb_advance_width
@@ -217,7 +231,7 @@ def clear_ufo(ufo: Font) -> None:
         glyph.clearComponents()
     # Ditch everything might interfere with the GPOS table,
     # we only want to test kerning as applied by the KernFeatureWriter
-    features = parseLayoutFeatures(ufo).asFea()  # Resolve includes
+    features: str = parseLayoutFeatures(ufo).asFea()  # Resolve includes
     ufo.features.text = re.sub(
         r"(?s)feature (kern|mark|mkmk|curs|dist) {.*} \1;", "", features
     )
