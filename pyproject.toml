@@ -32,6 +32,9 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+glyphsLib = ["glyphsLib"]
+
 [project.urls]
 Documentation = "https://github.com/daltonmaag/kerning-validator#readme"
 Issues = "https://github.com/daltonmaag/kerning-validator/issues"
@@ -54,6 +57,8 @@ dependencies = [
   "pytest",
   "pytest-cov",
 ]
+features = ["glyphsLib"]
+
 [tool.hatch.envs.default.scripts]
 cov = "pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=src/kerning_validator --cov=tests {args}"
 no-cov = "cov --no-cov {args}"
