@@ -17,6 +17,7 @@ import tqdm
 import ufo2ft
 import uharfbuzz as hb
 from fontTools import unicodedata
+from fontTools.misc.fixedTools import otRound
 from fontTools.ttLib import TTFont
 from fontTools.ufoLib.kerning import lookupKerningValue
 from ufo2ft.featureCompiler import parseLayoutFeatures
@@ -49,6 +50,11 @@ def main(args: list[str] | None = None) -> None:
         help="Report progress.",
     )
     parser.add_argument(
+        "--round",
+        action="store_true",
+        help="Round source kerning with otRound to reduce noise.",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         help="Write the compiled fonts to a directory, for inspection.",
@@ -67,6 +73,7 @@ def main(args: list[str] | None = None) -> None:
 
     output_dir: Path | None = parsed_args.output_dir
     progress_bar: bool = parsed_args.progress
+    should_round: bool = parsed_args.round
     debug_feature_file: StringIO | None = parsed_args.debug_feature_file
     stepwise: bool = parsed_args.stepwise
     log_output_dir: Path | None = parsed_args.log_output_dir
@@ -82,7 +89,13 @@ def main(args: list[str] | None = None) -> None:
         else:
             output_log = None
         validate_kerning(
-            ufo, progress_bar, stepwise, debug_feature_file, output_font, output_log
+            ufo,
+            progress_bar,
+            should_round,
+            stepwise,
+            debug_feature_file,
+            output_font,
+            output_log,
         )
 
 
@@ -98,6 +111,7 @@ def open_ufo(path: str | os.PathLike[str]) -> Font:
 def validate_kerning(
     ufo: Font,
     progress_bar: bool,
+    should_round: bool,
     stepwise: bool,
     debug_feature_file: StringIO | None,
     output_font: Path | None,
@@ -187,6 +201,8 @@ def validate_kerning(
             glyphToFirstGroup=glyphToFirstGroup,
             glyphToSecondGroup=glyphToSecondGroup,
         )
+        if should_round:
+            reference_value = otRound(reference_value)
         direction = unicodedata.script_horizontal_direction(script)
 
         first_gid = glyph_id[first]
