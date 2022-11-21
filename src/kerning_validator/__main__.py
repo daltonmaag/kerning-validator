@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import itertools
 import os
 import re
@@ -275,7 +276,11 @@ def classify_glyphs(font: TTFont) -> tuple[GlyphProperties, GlyphProperties]:
     cmap = font.getBestCmap()
     gsub = font.get("GSUB")
 
-    scripts = classifyGlyphs(script_extensions_for_codepoint, cmap, gsub)
+    font_scripts = determine_font_scripts(cmap)
+    scripts_for_copdepoint = functools.partial(
+        script_extensions_for_codepoint, known_scripts=font_scripts
+    )
+    scripts = classifyGlyphs(scripts_for_copdepoint, cmap, gsub)
     glyph_scripts: GlyphProperties = {}
     for script, glyphs in scripts.items():
         for name in glyphs:
@@ -290,8 +295,32 @@ def classify_glyphs(font: TTFont) -> tuple[GlyphProperties, GlyphProperties]:
     return glyph_scripts, glyph_bidis
 
 
-def script_extensions_for_codepoint(uv: int) -> set[str]:
-    return unicodedata.script_extension(chr(uv))
+def determine_font_scripts(cmap: Mapping[int, str]) -> set[str]:
+    """Returns a set of scripts the font is determined to support.
+
+    This is done by looking at all defined codepoints in a font and
+    remembering the script of any of the codepoints if it is associated with
+    just one script. This would remember the script of U+0780 THAANA LETTER
+    HAA (Thaa) but not U+061F ARABIC QUESTION MARK (multiple scripts).
+    """
+    single_scripts: set[str] = set()
+    for codepoint in cmap.keys():
+        scripts = unicodedata.script_extension(chr(codepoint))
+        if len(scripts) == 1:
+            single_scripts.update(scripts)
+    return single_scripts
+
+
+def script_extensions_for_codepoint(uv: int, known_scripts: set[str]) -> set[str]:
+    # If there are no detected scripts, consider everything common.
+    if not known_scripts:
+        return {"Zyyy"}
+    else:
+        return {
+            x
+            for x in unicodedata.script_extension(chr(uv))
+            if x in known_scripts or x in DFLT_SCRIPTS
+        }
 
 
 def bucket_kerned_glyphs(
