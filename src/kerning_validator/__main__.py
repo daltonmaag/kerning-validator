@@ -204,7 +204,7 @@ def validate_kerning(
         )
         if should_round:
             reference_value = otRound(reference_value)
-        direction = unicodedata.script_horizontal_direction(script)
+        direction = unicodedata.script_horizontal_direction(script, "LTR")
 
         first_gid = glyph_id[first]
         second_gid = glyph_id[second]
