@@ -8,12 +8,12 @@ import argparse
 import functools
 import itertools
 import os
-import re
 import sys
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Callable, Dict, Iterable, Mapping, Sequence, Set, Tuple
+from typing import Dict, Iterable, Mapping, Sequence, Set, Tuple
 
+import fontTools.feaLib as feaLib
 import tqdm
 import ufo2ft
 import uharfbuzz as hb
@@ -248,10 +248,17 @@ def clear_ufo(ufo: Font) -> None:
         glyph.clearComponents()
     # Ditch everything might interfere with the GPOS table,
     # we only want to test kerning as applied by the KernFeatureWriter
-    features: str = parseLayoutFeatures(ufo).asFea()  # Resolve includes
-    ufo.features.text = re.sub(
-        r"(?s)feature (kern|mark|mkmk|curs|dist) {.*} \1;", "", features
-    )
+    undesirable_features = {"kern", "mark", "mkmk", "curs", "dist"}
+    features: feaLib.ast.FeatureFile = parseLayoutFeatures(ufo)  # Resolve includes
+    features.statements = [
+        statement
+        for statement in features.statements
+        if not (
+            isinstance(statement, feaLib.ast.FeatureBlock)
+            and statement.name in undesirable_features
+        )
+    ]
+    ufo.features.text = features.asFea()
 
 
 def get_glyph_id(font: hb.Font, codepoint: int, user_data: None) -> int:
