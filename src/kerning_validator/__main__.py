@@ -11,7 +11,7 @@ import os
 import sys
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Dict, Iterable, Mapping, Sequence, Set, Tuple
+from typing import Dict, Iterable, Mapping, Optional, Sequence, Set, Tuple
 
 import fontTools.feaLib as feaLib
 import tqdm
@@ -26,6 +26,8 @@ from ufo2ft.featureWriters.kernFeatureWriter import KernFeatureWriter, unicodeBi
 from ufo2ft.util import DFLT_SCRIPTS, classifyGlyphs
 from ufoLib2 import Font
 
+from .language_tags import LANG_SYS_TAGS_TO_BCP47
+
 # GID_PREFIX is an arbitrary value > U+10FFF to shift codepoints by, to avoid
 # HarfBuzz doing any processing on them.
 GID_PREFIX = 0x80000000
@@ -33,7 +35,7 @@ GID_PREFIX = 0x80000000
 # Shapers hate this one mixing of bidi types in a kerning pair.
 BAD_BIDIS = {"L", "R"}
 
-PairIterable = Iterable[Tuple[str, Tuple[str, str]]]
+PairIterable = Iterable[Tuple[str, Optional[str], Tuple[str, str]]]
 GlyphProperties = Dict[str, Set[str]]
 
 
@@ -136,6 +138,25 @@ def validate_kerning(
 
     glyph_scripts, glyph_bidis = classify_glyphs(tt_font)
 
+    # Test pairs not just with the "default" language, but also with all the
+    # others that are defined for the script (scouring `GSUB` and `GPOS`
+    # tables), to ensure the kerning is registered for all languages.
+    language_systems: dict[str, set[str | None]] = {}
+    gsub = tt_font.get("GSUB")
+    if gsub is not None:
+        for script_record in gsub.table.ScriptList.ScriptRecord:
+            for lang_sys_record in script_record.Script.LangSysRecord:
+                language_systems.setdefault(script_record.ScriptTag, {None}).add(
+                    LANG_SYS_TAGS_TO_BCP47.get(lang_sys_record.LangSysTag, None)
+                )
+    gpos = tt_font.get("GPOS")
+    if gpos is not None:
+        for script_record in gpos.table.ScriptList.ScriptRecord:
+            for lang_sys_record in script_record.Script.LangSysRecord:
+                language_systems.setdefault(script_record.ScriptTag, {None}).add(
+                    LANG_SYS_TAGS_TO_BCP47.get(lang_sys_record.LangSysTag, None)
+                )
+
     # Drop the GSUB table now to stop HarfBuzz from applying any substitutions
     # later in the comparison loop. It must only use what it's given.
     if "GSUB" in tt_font:
@@ -189,10 +210,11 @@ def validate_kerning(
     # runs, only if both are of the same script or at least one is a "common"
     # script. Some glyphs may be associated with more than one script (e.g.
     # U+0951 DEVANAGARI STRESS SIGN UDATTA), so repeat the pair for all of these
-    # scripts.
-    for script, (first, second) in report_progress(
+    # scripts. Also test the pair with each language other than the default one
+    # that has been defined for OpenType Layout.
+    for script, language, (first, second) in report_progress(
         iterate_script_and_pairs(
-            first_glyphs, second_glyphs, glyph_scripts, glyph_bidis
+            first_glyphs, second_glyphs, glyph_scripts, glyph_bidis, language_systems
         )
     ):
         reference_value: float = lookupKerningValue(
@@ -211,6 +233,8 @@ def validate_kerning(
         hb_buf = hb.Buffer()
         hb_buf.script = script
         hb_buf.direction = direction
+        if language is not None:
+            hb_buf.language = language
         hb_buf.add_codepoints((first_gid, second_gid))
         hb.shape(hb_font, hb_buf, None)
 
@@ -232,7 +256,7 @@ def validate_kerning(
         )
         if kerning_value != reference_value:
             print(
-                f"{script=} {direction=}: {first} {second} should be {reference_value} but is {kerning_value}",
+                f"{script=} {language=} {direction=}: {first} {second} should be {reference_value} but is {kerning_value}",
                 file=log_output,
             )
             if stepwise:
@@ -359,6 +383,7 @@ def iterate_script_and_pairs(
     second_glyphs: set[str],
     glyph_scripts: GlyphProperties,
     glyph_bidis: GlyphProperties,
+    language_systems: dict[str, set[str | None]],
 ) -> PairIterable:
     # Imitate real world text itemization by filtering out pairs that wouldn't
     # occur next to each other in the same run.
@@ -383,13 +408,26 @@ def iterate_script_and_pairs(
             first_scripts, second_scripts
         ):
             if first_script == second_script:
-                yield first_script, (first, second)
+                script = first_script
             elif first_script in DFLT_SCRIPTS:
-                yield second_script, (first, second)
+                script = second_script
             elif second_script in DFLT_SCRIPTS:
-                yield first_script, (first, second)
+                script = first_script
             else:
                 continue
+
+            # NOTE: Language systems are keyed by OpenType Script Tags, but
+            # scripts here are Unicode script codes. Collect all languages that
+            # are defined for any Script Tag (e.g. `taml` and `tml2`) just to be
+            # thorough.
+            languages = {
+                language
+                for tag in unicodedata.ot_tags_from_script(script)
+                for language in language_systems.get(tag, (None,))
+            }
+            assert languages
+            for language in languages:
+                yield script, language, (first, second)
 
 
 if __name__ == "__main__":
