@@ -22,7 +22,8 @@ from fontTools.misc.fixedTools import otRound
 from fontTools.ttLib import TTFont
 from fontTools.ufoLib.kerning import lookupKerningValue
 from ufo2ft.featureCompiler import parseLayoutFeatures
-from ufo2ft.featureWriters.kernFeatureWriter import KernFeatureWriter, unicodeBidiType
+from ufo2ft.featureWriters.kernFeatureWriter import unicodeBidiType
+from ufo2ft.featureWriters.kernFeatureWriter4 import KernFeatureWriter
 from ufo2ft.util import DFLT_SCRIPTS, classifyGlyphs
 from ufoLib2 import Font
 
@@ -410,12 +411,20 @@ def iterate_script_and_pairs(
         for first_script, second_script in itertools.product(
             first_scripts, second_scripts
         ):
+            # First, reject script combinations whose directions clash (e.g.
+            # Latn and Arab).
             dir1 = unicode_script_direction(first_script)
             dir2 = unicode_script_direction(second_script)
             if {dir1, dir2}.issuperset(BAD_DIRECTIONS):
                 continue
 
-            for script in (first_script, second_script):
+            # We want to test the pair with its dominant scripts. If both are
+            # non-dominant (common), test with just the common script.
+            both_scripts = {first_script, second_script} - DFLT_SCRIPTS
+            if not both_scripts:
+                both_scripts = {"Zyyy"}
+
+            for script in both_scripts:
                 # NOTE: Language systems are keyed by OpenType Script Tags, but
                 # scripts here are Unicode script codes. Collect all languages that
                 # are defined for any Script Tag (e.g. `taml` and `tml2`) just to be
