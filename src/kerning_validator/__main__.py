@@ -34,6 +34,7 @@ GID_PREFIX = 0x80000000
 
 # Shapers hate this one mixing of bidi types in a kerning pair.
 BAD_BIDIS = {"L", "R"}
+BAD_DIRECTIONS = {"LTR", "RTL"}
 
 PairIterable = Iterable[Tuple[str, Optional[str], Tuple[str, str]]]
 GlyphProperties = Dict[str, Set[str]]
@@ -235,7 +236,7 @@ def validate_kerning(
         hb_buf.direction = direction
         if language is not None:
             hb_buf.language = language
-        hb_buf.add_codepoints((first_gid, second_gid))
+        hb_buf.add_codepoints([first_gid, second_gid])
         hb.shape(hb_font, hb_buf, None)
 
         # Sanity checks to ensure HarfBuzz doesn't do unexpected substitutions.
@@ -315,6 +316,8 @@ def classify_glyphs(font: TTFont) -> tuple[GlyphProperties, GlyphProperties]:
             glyph_scripts.setdefault(name, set()).add(script)
 
     bidis = classifyGlyphs(unicodeBidiType, cmap, gsub)
+    # Sanity check that each glyph has only one bidi class.
+    assert bidis.get("L", set()).isdisjoint(bidis.get("R", set()))
     glyph_bidis: GlyphProperties = {}
     for bidi, glyphs in bidis.items():
         for name in glyphs:
@@ -397,37 +400,40 @@ def iterate_script_and_pairs(
         if pair_bidis.issuperset(BAD_BIDIS):
             continue
 
-        # Skip pairs that mix explicit scripts (implicit scripts like Zyyy are
-        # fine), because in real-world applications, text is segmented into text
-        # runs for each script. Cross-script kerning is therefore never applied.
-        # A glyph might be member of multiple scripts for reasons, though, so
-        # ensure we hit all combinations.
+        # In real-world applications, text is segmented into text runs for each
+        # script, cross-script kerning is therefore never applied. InDesign's
+        # default composer does not care about script boundaries, though. A
+        # glyph might be member of multiple scripts for reasons, so ensure we
+        # hit all combinations.
         first_scripts = glyph_scripts[first]
         second_scripts = glyph_scripts[second]
         for first_script, second_script in itertools.product(
             first_scripts, second_scripts
         ):
-            if first_script == second_script:
-                script = first_script
-            elif first_script in DFLT_SCRIPTS:
-                script = second_script
-            elif second_script in DFLT_SCRIPTS:
-                script = first_script
-            else:
+            dir1 = unicode_script_direction(first_script)
+            dir2 = unicode_script_direction(second_script)
+            if {dir1, dir2}.issuperset(BAD_DIRECTIONS):
                 continue
 
-            # NOTE: Language systems are keyed by OpenType Script Tags, but
-            # scripts here are Unicode script codes. Collect all languages that
-            # are defined for any Script Tag (e.g. `taml` and `tml2`) just to be
-            # thorough.
-            languages = {
-                language
-                for tag in unicodedata.ot_tags_from_script(script)
-                for language in language_systems.get(tag, (None,))
-            }
-            assert languages
-            for language in languages:
-                yield script, language, (first, second)
+            for script in (first_script, second_script):
+                # NOTE: Language systems are keyed by OpenType Script Tags, but
+                # scripts here are Unicode script codes. Collect all languages that
+                # are defined for any Script Tag (e.g. `taml` and `tml2`) just to be
+                # thorough.
+                languages = {
+                    language
+                    for tag in unicodedata.ot_tags_from_script(script)
+                    for language in language_systems.get(tag, (None,))
+                }
+                assert languages
+                for language in languages:
+                    yield script, language, (first, second)
+
+
+def unicode_script_direction(sc: str) -> str | None:
+    if sc in DFLT_SCRIPTS:
+        return None
+    return unicodedata.script_horizontal_direction(sc, "LTR")
 
 
 if __name__ == "__main__":
