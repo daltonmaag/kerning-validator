@@ -389,6 +389,23 @@ def iterate_script_and_pairs(
     glyph_bidis: GlyphProperties,
     language_systems: dict[str, set[str | None]],
 ) -> PairIterable:
+    # Cache the languages associated with each script. NOTE: Language systems
+    # are keyed by OpenType Script Tags, but scripts here are Unicode script
+    # codes. Collect all languages that are defined for any Script Tag (e.g.
+    # `taml` and `tml2`) just to be thorough.
+    all_scripts = set(
+        script for scripts in glyph_scripts.values() for script in scripts
+    )
+    language_per_script = {
+        script: {
+            language
+            for tag in unicodedata.ot_tags_from_script(script)
+            for language in language_systems.get(tag, (None,))
+        }
+        for script in all_scripts
+    }
+    assert all(languages for languages in language_per_script.values())
+
     # Imitate real world text itemization by filtering out pairs that wouldn't
     # occur next to each other in the same run.
     for first, second in itertools.product(sorted(first_glyphs), sorted(second_glyphs)):
@@ -411,8 +428,8 @@ def iterate_script_and_pairs(
         for first_script, second_script in itertools.product(
             first_scripts, second_scripts
         ):
-            # First, reject script combinations whose directions clash (e.g.
-            # Latn and Arab).
+            # Reject script combinations whose directions clash (e.g. Latn and
+            # Arab).
             dir1 = unicode_script_direction(first_script)
             dir2 = unicode_script_direction(second_script)
             if {dir1, dir2}.issuperset(BAD_DIRECTIONS):
@@ -425,17 +442,7 @@ def iterate_script_and_pairs(
                 both_scripts = {"Zyyy"}
 
             for script in both_scripts:
-                # NOTE: Language systems are keyed by OpenType Script Tags, but
-                # scripts here are Unicode script codes. Collect all languages that
-                # are defined for any Script Tag (e.g. `taml` and `tml2`) just to be
-                # thorough.
-                languages = {
-                    language
-                    for tag in unicodedata.ot_tags_from_script(script)
-                    for language in language_systems.get(tag, (None,))
-                }
-                assert languages
-                for language in languages:
+                for language in language_per_script[script]:
                     yield script, language, (first, second)
 
 
