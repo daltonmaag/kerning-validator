@@ -1,25 +1,8 @@
-# kerning-validator
+This is a partial rewrite of https://github.com/daltonmaag/kerning-validator/ to work on variable fonts. The point is to ensure that the old ufo2ft kern writer behaves correctly and the kerning in the sources and the final font matches across all master locations.
 
-**Table of Contents**
+Run like:
 
-- [Installation](#installation)
-- [Use](#use)
-- [License](#license)
-
-## Installation
-
-```console
-pip install git+https://github.com/daltonmaag/kerning-validator
+```sh
+uv run compile-font.py font.designspace output.ttf
+uv run test-kerning.py font.designspace output.ttf
 ```
-
-## Use
-
-This is a developer tool to sanity-check the font compilation stack.
-
-It tests ufo2ft's KernFeatureWriter (no manual `kern`, `dist`, `mark`, `mkmk`, `curs` features; too complicated to unparse), and thereby implicitly fontTools's font compilation and uharfbuzz's table packing code. The shaping is validated with the HarfBuzz code embedded into uharfbuzz, typically using the HarfBuzz shaping engine.
-
-Run the tool on one or more [UFOs](https://unifiedfontobject.org/). It will compile them using [ufo2ft](https://github.com/googlefonts/ufo2ft/) and use [uharfbuzz](https://github.com/harfbuzz/uharfbuzz/) to ensure that the kerning defined in the sources makes it into the final font.
-
-## License
-
-`kerning-validator` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
